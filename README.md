@@ -168,6 +168,8 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
+### Telegram чат: https://t.me/+uEi6Dj_Qc4tkNmRi
+
 ## Документация
 
 - Полная справка по API: [`docs/API_REFERENCE.md`](docs/API_REFERENCE.md)
