@@ -330,66 +330,9 @@ asyncio.run(main())
 
 Объект: `client.auth`
 
-### `async auth.register(email: str, password: str, turnstile_token: str | None = None) -> SDKObject`
-
-Регистрирует пользователя.
-
-Параметры:
-
-- `email`
-- `password`
-- `turnstile_token`
-  Токен captcha, если требуется.
-
-Возвращает:
-
-- `SDKObject` ответа API.
-
-### `async auth.login(email: str, password: str, turnstile_token: str | None = None) -> SDKObject`
-
-Выполняет вход.
-
-Параметры:
-
-- `email`
-- `password`
-- `turnstile_token`
-
-Возвращает:
-
-- `SDKObject` ответа API.
-
-Примечание:
-
-- если в ответе есть `accessToken`, SDK автоматически сохранит его в клиент.
-
-### `async auth.verify_otp(email: str, password: str, otp: str, flow_token: str) -> SDKObject`
-
-Подтверждает OTP.
-
-Параметры:
-
-- `email`
-- `password`
-- `otp`
-- `flow_token`
-
-Возвращает:
-
-- `SDKObject` ответа API.
-
-Примечание:
-
-- если в ответе есть `accessToken`, SDK автоматически сохранит его в клиент.
-
-### `async auth.resend_otp(email: str, flow_token: str) -> None`
-
-Повторно отправляет OTP.
-
-Параметры:
-
-- `email`
-- `flow_token`
+SDK не поддерживает credential-based auth flow через e-mail и пароль.
+Для авторизованных сценариев используйте `access_token`, `refresh_token` в `cookies`
+и `auth.refresh_session()`.
 
 ### `async auth.refresh_session() -> SDKObject`
 
@@ -414,43 +357,6 @@ asyncio.run(main())
 Примечание:
 
 - локальный `access_token` клиента очищается всегда.
-
-### `async auth.forgot_password(email: str, turnstile_token: str | None = None) -> SDKObject`
-
-Запускает сценарий восстановления пароля.
-
-Параметры:
-
-- `email`
-- `turnstile_token`
-
-Возвращает:
-
-- `SDKObject` ответа API.
-
-### `async auth.reset_password(new_password: str, email: str | None = None, flow_token: str | None = None, otp: str | None = None) -> None`
-
-Сбрасывает пароль.
-
-Параметры:
-
-- `new_password`
-- `email`
-- `flow_token`
-- `otp`
-
-Примечание:
-
-- поддерживает как reset по `flow_token` и `otp`, так и сценарии, где сервер использует текущую reset-сессию.
-
-### `async auth.change_password(payload: Mapping[str, Any]) -> None`
-
-Меняет пароль.
-
-Параметры:
-
-- `payload`
-  Словарь полей, который ожидает сервер.
 
 ## Posts
 

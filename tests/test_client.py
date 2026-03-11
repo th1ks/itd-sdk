@@ -4,7 +4,7 @@ import asyncio
 import unittest
 from typing import Any
 
-from itd_sdk.client import CommentsAPI, NotificationsAPI, PostsAPI, SearchAPI, SocialAPI
+from itd_sdk.client import AuthAPI, CommentsAPI, NotificationsAPI, PostsAPI, SearchAPI, SocialAPI
 
 
 class FakeHTTP:
@@ -18,6 +18,20 @@ class FakeHTTP:
 
 
 class ClientAPITestCase(unittest.IsolatedAsyncioTestCase):
+    async def test_auth_api_exposes_session_only_methods(self) -> None:
+        api = AuthAPI(FakeHTTP({}))
+
+        self.assertTrue(hasattr(api, "refresh_session"))
+        self.assertTrue(hasattr(api, "logout"))
+        self.assertTrue(hasattr(api, "logout_all"))
+        self.assertFalse(hasattr(api, "login"))
+        self.assertFalse(hasattr(api, "register"))
+        self.assertFalse(hasattr(api, "verify_otp"))
+        self.assertFalse(hasattr(api, "resend_otp"))
+        self.assertFalse(hasattr(api, "forgot_password"))
+        self.assertFalse(hasattr(api, "reset_password"))
+        self.assertFalse(hasattr(api, "change_password"))
+
     async def test_create_post_unwraps_and_normalizes_response(self) -> None:
         http = FakeHTTP(
             {

@@ -131,6 +131,10 @@ post.to_dict()
 - `device_id` для явной установки `X-Device-Id`
 - `auto_refresh=True` для повтора запросов после `401`, если доступны refresh cookies
 
+Credential-based auth flow через `email/password` в SDK не поддерживается.
+Для авторизованных сценариев используйте `access_token`, `refresh_token`
+и `client.auth.refresh_session()`.
+
 Пример:
 
 ```python

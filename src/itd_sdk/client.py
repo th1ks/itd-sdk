@@ -72,45 +72,6 @@ class RawAPI(_BaseAPI):
 
 
 class AuthAPI(_BaseAPI):
-    async def register(
-        self,
-        *,
-        email: str,
-        password: str,
-        turnstile_token: str | None = None,
-    ) -> SDKObject:
-        payload = drop_none(email=email, password=password, turnstileToken=turnstile_token)
-        return to_model(await self._http.request_auth("POST", "/sign-up", json=payload))
-
-    async def login(
-        self,
-        *,
-        email: str,
-        password: str,
-        turnstile_token: str | None = None,
-    ) -> SDKObject:
-        payload = drop_none(email=email, password=password, turnstileToken=turnstile_token)
-        response = await self._http.request_auth("POST", "/sign-in", json=payload)
-        if isinstance(response, dict) and response.get("accessToken"):
-            self._http.set_access_token(str(response["accessToken"]))
-        return to_model(response)
-
-    async def verify_otp(self, *, email: str, password: str, otp: str, flow_token: str) -> SDKObject:
-        payload = {
-            "email": email,
-            "password": password,
-            "otp": otp,
-            "flowToken": flow_token,
-        }
-        response = await self._http.request_auth("POST", "/verify-otp", json=payload)
-        if isinstance(response, dict) and response.get("accessToken"):
-            self._http.set_access_token(str(response["accessToken"]))
-        return to_model(response)
-
-    async def resend_otp(self, *, email: str, flow_token: str) -> None:
-        payload = {"email": email, "flowToken": flow_token}
-        await self._http.request_auth("POST", "/resend-otp", json=payload)
-
     async def refresh_session(self) -> SDKObject:
         response = await self._http.request_auth("POST", "/refresh")
         if isinstance(response, dict) and response.get("accessToken"):
@@ -128,34 +89,6 @@ class AuthAPI(_BaseAPI):
             await self._http.request_auth("POST", "/logout-all")
         finally:
             self._http.set_access_token(None)
-
-    async def forgot_password(
-        self,
-        *,
-        email: str,
-        turnstile_token: str | None = None,
-    ) -> SDKObject:
-        payload = drop_none(email=email, turnstileToken=turnstile_token)
-        return to_model(await self._http.request_auth("POST", "/forgot-password", json=payload))
-
-    async def reset_password(
-        self,
-        *,
-        new_password: str,
-        email: str | None = None,
-        flow_token: str | None = None,
-        otp: str | None = None,
-    ) -> None:
-        payload = drop_none(
-            email=email,
-            flowToken=flow_token,
-            otp=otp,
-            newPassword=new_password,
-        )
-        await self._http.request_auth("POST", "/reset-password", json=payload)
-
-    async def change_password(self, payload: Mapping[str, Any]) -> None:
-        await self._http.request_auth("POST", "/change-password", json=dict(payload))
 
 
 class UsersAPI(_BaseAPI):
