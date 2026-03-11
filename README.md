@@ -68,6 +68,27 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
+Пост с медиа:
+
+```python
+import asyncio
+
+from itd_sdk import ITDClient
+
+
+async def main() -> None:
+    async with ITDClient(access_token="your_access_token") as client:
+        media = await client.files.upload_media("image.jpg")
+        post = await client.posts.create_post(
+            text="Пост с вложением",
+            attachment_ids=[media.id],
+        )
+        print(post.id, post.text)
+
+
+asyncio.run(main())
+```
+
 ## Модель ответов
 
 High-level методы возвращают `SDKObject` и `Page`:

@@ -48,6 +48,12 @@ def build_query(params: Mapping[str, Any] | None = None, /, **kwargs: Any) -> di
     return {key: to_query_value(value) for key, value in merged.items()}
 
 
+def unwrap_data(payload: Any) -> Any:
+    if isinstance(payload, Mapping) and payload.get("data") is not None:
+        return payload["data"]
+    return payload
+
+
 def build_upload_file(
     file: str | Path | bytes | BinaryIO,
     *,

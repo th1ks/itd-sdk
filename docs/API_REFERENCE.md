@@ -567,7 +567,7 @@ async def example(client) -> None:
 
 Возвращает:
 
-- `SDKObject` ответа API.
+- `SDKObject` созданного поста.
 
 ### `async posts.create_repost(post_id: str, content: str | None = None) -> SDKObject`
 
@@ -580,7 +580,7 @@ async def example(client) -> None:
 
 Возвращает:
 
-- `SDKObject` ответа API.
+- `SDKObject` созданного репоста.
 
 ### `async posts.edit_post(post_id: str, text: str | None = None, content: str | None = None, spans: list[dict] | None = None) -> None`
 
@@ -680,7 +680,7 @@ async def example(client) -> None:
 
 Примечание:
 
-- внутри вызывает `track_view()` для каждого ID.
+- отправляет просмотры батчами с ограниченной параллельностью через `track_view()`.
 
 ## Comments
 
@@ -728,7 +728,7 @@ async def example(client) -> None:
 
 Возвращает:
 
-- `SDKObject` ответа API.
+- `SDKObject` созданного комментария.
 
 ### `async comments.create_reply(comment_id: str, content: str, reply_to_user_id: str | None = None, attachment_ids: list[str] | None = None) -> SDKObject`
 
@@ -743,7 +743,7 @@ async def example(client) -> None:
 
 Возвращает:
 
-- `SDKObject` ответа API.
+- `SDKObject` созданного ответа.
 
 ### `async comments.edit_comment(comment_id: str, content: str) -> None`
 
@@ -795,6 +795,8 @@ async def example(client) -> None:
 Возвращает:
 
 - `Page[SDKObject]`
+
+`next_cursor` будет заполнен, если API вернет курсор следующей страницы.
 
 ### `async notifications.get_unread_count() -> int`
 
@@ -853,7 +855,9 @@ async def example(client) -> None:
 - `user_id`
 - `limit`
 - `cursor`
+  Непрозрачный курсор из предыдущей страницы или строковое число страницы для page-based pagination.
 - `page`
+  Явный номер страницы для page-based pagination.
 
 Возвращает:
 
@@ -868,7 +872,9 @@ async def example(client) -> None:
 - `user_id`
 - `limit`
 - `cursor`
+  Непрозрачный курсор из предыдущей страницы или строковое число страницы для page-based pagination.
 - `page`
+  Явный номер страницы для page-based pagination.
 
 Возвращает:
 
@@ -898,7 +904,9 @@ async def example(client) -> None:
 
 - `limit`
 - `cursor`
+  Непрозрачный курсор из предыдущей страницы или строковое число страницы для page-based pagination.
 - `page`
+  Явный номер страницы для page-based pagination.
 
 Возвращает:
 
@@ -954,6 +962,8 @@ async def example(client) -> None:
 
 - `Page[SDKObject]`
 
+`next_cursor` будет заполнен, если API вернет курсор следующей страницы.
+
 ### `async search.global_search(query: str, user_limit: int = 5, hashtag_limit: int = 5) -> SDKObject`
 
 Выполняет глобальный поиск по пользователям и хэштегам.
@@ -992,7 +1002,7 @@ async def example(client) -> None:
 Параметры:
 
 - `file`
-  Путь, `bytes` или бинарный file-like объект.
+  Путь (`str` или `Path`), `bytes` или бинарный file-like объект.
 - `filename`
   Явное имя файла.
 - `content_type`
@@ -1000,7 +1010,7 @@ async def example(client) -> None:
 
 Возвращает:
 
-- `SDKObject` ответа API.
+- `SDKObject` загруженного файла.
 
 ### `async files.delete_file(file_id: str) -> None`
 

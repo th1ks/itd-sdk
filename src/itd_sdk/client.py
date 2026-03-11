@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any, BinaryIO
 from urllib.parse import quote
 
@@ -14,12 +16,35 @@ from ._normalizers import (
     normalize_profile,
     normalize_relation_user,
 )
-from ._utils import build_query, build_upload_file, drop_none
+from ._utils import build_query, build_upload_file, drop_none, unwrap_data
 from .exceptions import ApiError
 from .models import Page, SDKObject, to_model
 
 
 DEFAULT_ORIGIN = "https://итд.com"
+
+
+def _resolve_page_params(*, cursor: str | None, page: int | None) -> tuple[dict[str, str], int | None]:
+    if cursor is not None:
+        try:
+            page_number = int(cursor)
+        except (TypeError, ValueError):
+            return build_query(cursor=cursor), None
+        return build_query(page=page_number), page_number
+    if page is not None:
+        return build_query(page=page), page
+    return build_query(page=1), 1
+
+
+def _extract_page_next_cursor(payload: Any, page_number: int | None) -> str | None:
+    if isinstance(payload, Mapping):
+        next_cursor = extract_next_cursor(payload)
+        if next_cursor is not None:
+            return next_cursor
+        pagination = payload.get("pagination")
+        if isinstance(pagination, dict) and pagination.get("hasMore") and page_number is not None:
+            return str(page_number + 1)
+    return None
 
 
 class _BaseAPI:
@@ -139,13 +164,15 @@ class UsersAPI(_BaseAPI):
         return bool(result.get("available"))
 
     async def create_profile(self, payload: Mapping[str, Any]) -> SDKObject:
-        return to_model(await self._http.request_api("POST", "/users/profile", json=dict(payload)))
+        response = await self._http.request_api("POST", "/users/profile", json=dict(payload))
+        return to_model(normalize_profile(unwrap_data(response)))
 
     async def get_me(self) -> SDKObject:
         return to_model(normalize_profile(await self._http.request_api("GET", "/users/me")))
 
     async def update_me(self, payload: Mapping[str, Any]) -> SDKObject:
-        return to_model(await self._http.request_api("PUT", "/users/me", json=dict(payload)))
+        response = await self._http.request_api("PUT", "/users/me", json=dict(payload))
+        return to_model(normalize_profile(unwrap_data(response)))
 
     async def get_profile(self, username: str) -> SDKObject:
         return to_model(normalize_profile(await self._http.request_api("GET", f"/users/{username}")))
@@ -186,16 +213,15 @@ class UsersAPI(_BaseAPI):
 
     async def get_verification_status(self) -> SDKObject | None:
         try:
-            return to_model(await self._http.request_api("GET", "/verification/status"))
+            return to_model(unwrap_data(await self._http.request_api("GET", "/verification/status")))
         except ApiError as exc:
             if exc.status_code == 404:
                 return None
             raise
 
     async def submit_verification_request(self, video_url: str) -> SDKObject:
-        return to_model(
-            await self._http.request_api("POST", "/verification/submit", json={"videoUrl": video_url})
-        )
+        response = await self._http.request_api("POST", "/verification/submit", json={"videoUrl": video_url})
+        return to_model(unwrap_data(response))
 
     async def get_my_pins(self) -> SDKObject:
         response = await self._http.request_api("GET", "/users/me/pins")
@@ -311,11 +337,13 @@ class PostsAPI(_BaseAPI):
             attachmentIds=attachment_ids,
             poll=poll,
         )
-        return to_model(await self._http.request_api("POST", "/posts", json=payload))
+        response = await self._http.request_api("POST", "/posts", json=payload)
+        return to_model(normalize_post(unwrap_data(response)))
 
     async def create_repost(self, post_id: str, *, content: str | None = None) -> SDKObject:
         payload = drop_none(content=content)
-        return to_model(await self._http.request_api("POST", f"/posts/{post_id}/repost", json=payload))
+        response = await self._http.request_api("POST", f"/posts/{post_id}/repost", json=payload)
+        return to_model(normalize_post(unwrap_data(response)))
 
     async def edit_post(
         self,
@@ -361,8 +389,10 @@ class PostsAPI(_BaseAPI):
         await self._http.request_api("POST", f"/posts/{post_id}/view")
 
     async def track_views_batch(self, post_ids: list[str]) -> None:
-        for post_id in post_ids:
-            await self.track_view(post_id)
+        chunk_size = 10
+        for start in range(0, len(post_ids), chunk_size):
+            chunk = post_ids[start : start + chunk_size]
+            await asyncio.gather(*(self.track_view(post_id) for post_id in chunk))
 
 
 class CommentsAPI(_BaseAPI):
@@ -380,12 +410,12 @@ class CommentsAPI(_BaseAPI):
 
         items: list[dict[str, Any]]
         next_cursor: str | None = None
-        data = response.get("data")
+        data = unwrap_data(response)
         if isinstance(data, list):
             items = data
         elif isinstance(data, dict) and "comments" in data:
             items = data.get("comments", [])
-            next_cursor = data.get("nextCursor")
+            next_cursor = data.get("nextCursor") or extract_next_cursor(data)
         else:
             items = response.get("comments", [])
         next_cursor = next_cursor or response.get("cursor") or extract_next_cursor(response)
@@ -403,12 +433,12 @@ class CommentsAPI(_BaseAPI):
 
         items: list[dict[str, Any]]
         next_cursor: str | None = None
-        data = response.get("data")
+        data = unwrap_data(response)
         if isinstance(data, list):
             items = data
         elif isinstance(data, dict) and "replies" in data:
             items = data.get("replies", [])
-            next_cursor = data.get("nextCursor")
+            next_cursor = data.get("nextCursor") or extract_next_cursor(data)
         else:
             items = response.get("replies", [])
         next_cursor = next_cursor or response.get("cursor") or extract_next_cursor(response)
@@ -422,7 +452,8 @@ class CommentsAPI(_BaseAPI):
         attachment_ids: list[str] | None = None,
     ) -> SDKObject:
         payload = drop_none(content=content, attachmentIds=attachment_ids)
-        return to_model(await self._http.request_api("POST", f"/posts/{post_id}/comments", json=payload))
+        response = await self._http.request_api("POST", f"/posts/{post_id}/comments", json=payload)
+        return to_model(normalize_comment(unwrap_data(response)))
 
     async def create_reply(
         self,
@@ -433,7 +464,8 @@ class CommentsAPI(_BaseAPI):
         attachment_ids: list[str] | None = None,
     ) -> SDKObject:
         payload = drop_none(content=content, replyToUserId=reply_to_user_id, attachmentIds=attachment_ids)
-        return to_model(await self._http.request_api("POST", f"/comments/{comment_id}/replies", json=payload))
+        response = await self._http.request_api("POST", f"/comments/{comment_id}/replies", json=payload)
+        return to_model(normalize_comment(unwrap_data(response)))
 
     async def edit_comment(self, comment_id: str, *, content: str) -> None:
         await self._http.request_api("PATCH", f"/comments/{comment_id}", json={"content": content})
@@ -459,8 +491,11 @@ class NotificationsAPI(_BaseAPI):
         effective_offset = int(cursor) if cursor is not None else offset or 0
         params = build_query(limit=limit, offset=effective_offset if effective_offset > 0 else None)
         response = await self._http.request_api("GET", "/notifications/", params=params)
-        items = response.get("notifications") or response.get("data") or []
-        has_more = response.get("hasMore", False)
+        payload = unwrap_data(response)
+        items = payload.get("notifications") if isinstance(payload, dict) else None
+        if items is None:
+            items = response.get("notifications") or []
+        has_more = payload.get("hasMore", response.get("hasMore", False)) if isinstance(payload, dict) else False
         next_cursor = str(effective_offset + len(items)) if has_more else None
         return Page(items=[to_model(normalize_notification(item)) for item in items], next_cursor=next_cursor)
 
@@ -529,14 +564,15 @@ class NotificationsAPI(_BaseAPI):
 class FilesAPI(_BaseAPI):
     async def upload_media(
         self,
-        file: str | bytes | BinaryIO,
+        file: str | Path | bytes | BinaryIO,
         *,
         filename: str | None = None,
         content_type: str | None = None,
     ) -> SDKObject:
         upload_file, opened = build_upload_file(file, filename=filename, content_type=content_type)
         try:
-            return to_model(await self._http.request_api("POST", "/files/upload", files={"file": upload_file}))
+            response = await self._http.request_api("POST", "/files/upload", files={"file": upload_file})
+            return to_model(unwrap_data(response))
         finally:
             if opened is not None:
                 opened.close()
@@ -554,12 +590,12 @@ class SocialAPI(_BaseAPI):
         cursor: str | None = None,
         page: int | None = None,
     ) -> Page[SDKObject]:
-        page_number = int(cursor) if cursor is not None else page or 1
-        params = build_query(limit=limit, page=page_number)
+        pagination_params, page_number = _resolve_page_params(cursor=cursor, page=page)
+        params = build_query(pagination_params, limit=limit)
         response = await self._http.request_api("GET", f"/users/{user_id}/followers", params=params)
-        payload = response.get("data", response)
-        users = payload.get("users", payload.get("followers", []))
-        next_cursor = str(page_number + 1) if payload.get("pagination", {}).get("hasMore") else None
+        payload = unwrap_data(response)
+        users = payload.get("users", payload.get("followers", [])) if isinstance(payload, dict) else payload
+        next_cursor = _extract_page_next_cursor(payload, page_number)
         return Page(items=[to_model(normalize_relation_user(item)) for item in users], next_cursor=next_cursor)
 
     async def get_following(
@@ -570,12 +606,12 @@ class SocialAPI(_BaseAPI):
         cursor: str | None = None,
         page: int | None = None,
     ) -> Page[SDKObject]:
-        page_number = int(cursor) if cursor is not None else page or 1
-        params = build_query(limit=limit, page=page_number)
+        pagination_params, page_number = _resolve_page_params(cursor=cursor, page=page)
+        params = build_query(pagination_params, limit=limit)
         response = await self._http.request_api("GET", f"/users/{user_id}/following", params=params)
-        payload = response.get("data", response)
-        users = payload.get("users", payload.get("following", []))
-        next_cursor = str(page_number + 1) if payload.get("pagination", {}).get("hasMore") else None
+        payload = unwrap_data(response)
+        users = payload.get("users", payload.get("following", [])) if isinstance(payload, dict) else payload
+        next_cursor = _extract_page_next_cursor(payload, page_number)
         return Page(items=[to_model(normalize_relation_user(item)) for item in users], next_cursor=next_cursor)
 
     async def block(self, user_id: str) -> None:
@@ -591,16 +627,16 @@ class SocialAPI(_BaseAPI):
         cursor: str | None = None,
         page: int | None = None,
     ) -> Page[SDKObject]:
-        page_number = int(cursor) if cursor is not None else page or 1
-        params = build_query(limit=limit, page=page_number)
+        pagination_params, page_number = _resolve_page_params(cursor=cursor, page=page)
+        params = build_query(pagination_params, limit=limit)
         response = await self._http.request_api("GET", "/users/me/blocked", params=params)
-        payload = response.get("data", response)
+        payload = unwrap_data(response)
         if isinstance(payload, list):
             users = payload
-            has_more = False
+            next_cursor = None
         else:
             users = payload.get("users", [])
-            has_more = payload.get("pagination", {}).get("hasMore", False)
+            next_cursor = _extract_page_next_cursor(payload, page_number)
 
         normalized = []
         for item in users:
@@ -616,7 +652,6 @@ class SocialAPI(_BaseAPI):
                     "isBlocked": True,
                 }
             )
-        next_cursor = str(page_number + 1) if has_more else None
         return Page(items=[to_model(item) for item in normalized], next_cursor=next_cursor)
 
     async def batch_follow_status(self, user_ids: list[str]) -> SDKObject:
@@ -646,8 +681,11 @@ class SearchAPI(_BaseAPI):
     async def search_users(self, query: str, *, limit: int = 20, cursor: str | None = None) -> Page[SDKObject]:
         params = build_query(q=query, limit=limit, cursor=cursor)
         response = await self._http.request_api("GET", "/users/search", params=params)
-        users = response.get("data", {}).get("users") or response.get("users") or []
-        return Page(items=[to_model(item) for item in users], next_cursor=None)
+        data = unwrap_data(response)
+        users = data.get("users") if isinstance(data, dict) else None
+        if users is None:
+            users = response.get("users") or []
+        return Page(items=[to_model(normalize_profile(item)) for item in users], next_cursor=extract_next_cursor(data))
 
     async def global_search(
         self,
@@ -658,10 +696,10 @@ class SearchAPI(_BaseAPI):
     ) -> SDKObject:
         params = build_query(q=query, userLimit=user_limit, hashtagLimit=hashtag_limit)
         response = await self._http.request_api("GET", "/search", params=params)
-        data = response.get("data", response)
+        data = unwrap_data(response)
         return to_model(
             {
-                "users": data.get("users", []),
+                "users": [normalize_profile(item) for item in data.get("users", [])],
                 "hashtags": [normalize_hashtag(item) for item in data.get("hashtags", [])],
             }
         )
